@@ -1,0 +1,215 @@
+package com.test.helloeeg;
+
+import android.app.Activity;
+import android.bluetooth.BluetoothAdapter;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.DisplayMetrics;
+import android.util.Log;
+import android.view.View;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.graphics.Point; 
+import android.widget.RelativeLayout;
+
+import com.neurosky.thinkgear.*;
+
+public class HelloEEGActivity extends Activity {
+	BluetoothAdapter bluetoothAdapter;
+	
+	TextView tv;
+	TextView ps;
+	TextView med;
+	TextView att;
+	TextView bnk;
+	Button b;
+	
+	ImageView cursor; 
+	int width;
+	int height;
+	float []loc =new float [2];
+	
+	int conn;
+	
+	TGDevice tgDevice;
+	final boolean rawEnabled = false;
+	
+	final int steps = 10;
+	final int minThres =40;
+	final int maxThres = 60;
+	final int cursorWidth =50;
+	final int cursorHeight =50;
+	
+    /** Called when the activity is first created. */
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.main);
+        tv = (TextView)findViewById(R.id.tv); //create text view 
+        ps = (TextView)findViewById(R.id.ps); //create text view 
+        med = (TextView)findViewById(R.id.med); //create text view 
+        att = (TextView)findViewById(R.id.att); //create text view 
+        bnk = (TextView)findViewById(R.id.bnk); //create text view 
+        
+        cursor = (ImageView)findViewById(R.id.cursor); //create cursor
+        
+        DisplayMetrics dm = new DisplayMetrics();
+        getWindowManager().getDefaultDisplay().getMetrics(dm);
+    	width =dm.widthPixels;
+    	height =dm.heightPixels;
+    	loc[0]=0;
+    	loc[1]=0;
+        
+    	setCurser();
+    	
+        tv.setText("");
+        ps.setText("");
+        med.setText("");
+        att.setText("");
+        bnk.setText("");
+
+        
+
+        tv.setText("Android version: " + Integer.valueOf(android.os.Build.VERSION.SDK) + "\n" ); //display users android version 
+        bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+        if(bluetoothAdapter == null) { //check to see if there is bluetooth available 
+        	// Alert user that Bluetooth is not available
+        	Toast.makeText(this, "Bluetooth not available", Toast.LENGTH_LONG).show();
+        	finish(); //finish if there is none 
+        	return;
+        }else {
+        	/* create the TGDevice */
+        	tgDevice = new TGDevice(bluetoothAdapter, handler); //create new Think Gear device 
+//Weird Stuff        	handler.postDelayed(runnable, 100);
+        }  
+    }
+    
+    @Override
+    public void onDestroy() {
+    	tgDevice.close();
+        super.onDestroy();
+    }
+    /**
+     * Handles messages from TGDevice
+     */
+    private final Handler handler = new Handler() {
+        @Override
+        public void handleMessage(Message msg) {
+        	switch (msg.what) {
+            case TGDevice.MSG_STATE_CHANGE:
+
+                switch (msg.arg1) {
+	                case TGDevice.STATE_IDLE:
+	                    break;
+	                case TGDevice.STATE_CONNECTING:		                	
+	                	tv.setText("Connecting...\n");
+	                	break;		                    
+	                case TGDevice.STATE_CONNECTED:
+	                	tv.setText("Connected.\n");
+	                	tgDevice.start();
+	                    break;
+	                case TGDevice.STATE_NOT_FOUND:
+	                	tv.setText("Can't find\n");
+	                	break;
+	                case TGDevice.STATE_NOT_PAIRED:
+	                	tv.setText("not paired\n");
+	                	break;
+	                case TGDevice.STATE_DISCONNECTED:
+	                	tv.setText("Disconnected mang\n");
+                }
+
+                break;
+            case TGDevice.MSG_POOR_SIGNAL:
+            		//signal = msg.arg1;
+            		ps.setText("PoorSignal: " + msg.arg1 + "\n");
+            		conn=msg.arg1;
+                break;
+            case TGDevice.MSG_RAW_DATA:	  
+            		//raw1 = msg.arg1;
+            		//tv.setText("Got raw: " + msg.arg1 + "\n");
+            	break;
+            case TGDevice.MSG_HEART_RATE:
+        		//tv.setText("Heart rate: " + msg.arg1 + "\n");
+                break;
+            case TGDevice.MSG_ATTENTION:
+            		//att = msg.arg1;
+            		att.setText("Attention: " + msg.arg1 + "\n");
+            		  if(msg.arg1>maxThres)
+              	    	changeY(steps);
+              	    else if(msg.arg1<minThres)
+              	    	changeY(-steps);
+            		//Log.v("HelloA", "Attention: " + att + "\n");
+            	break;
+            case TGDevice.MSG_MEDITATION:
+            	    med.setText("Meditation: " + msg.arg1 + "\n"); 
+            	    if(msg.arg1>maxThres)
+            	    	changeX(steps);
+            	    else if(msg.arg1<minThres)
+            	    	changeX(-steps);
+
+            	break;
+            case TGDevice.MSG_BLINK:
+            		bnk.setText("Blink: " + msg.arg1 + "\n");
+            	break;
+            case TGDevice.MSG_RAW_COUNT:
+            		//tv.setText("Raw Count: " + msg.arg1 + "\n");
+            	break;
+            case TGDevice.MSG_LOW_BATTERY:
+            	Toast.makeText(getApplicationContext(), "Low battery!", Toast.LENGTH_SHORT).show();
+            	break;
+            case TGDevice.MSG_RAW_MULTI:
+            	TGRawMulti rawM = (TGRawMulti)msg.obj;
+            	//tv.setText("Raw1: " + rawM.ch1 + "\nRaw2: " + rawM.ch2);
+            default:
+            	break;
+            	
+        }
+        	setCurser();
+        }
+        
+      /*  More Weird Stuff
+        private Runnable runnable = new Runnable() {
+        	   @Override
+        	   public void run() {
+        		   handleMessage(Message msg);
+        	      handler.postDelayed(this, 100);
+        	   }
+    
+        	};
+        	*/
+        	
+    };
+    
+    
+    public void doStuff(View view) {
+    	if(tgDevice.getState() != TGDevice.STATE_CONNECTING && tgDevice.getState() != TGDevice.STATE_CONNECTED)
+    		tgDevice.connect(rawEnabled);   
+    	//tgDevice.ena
+    }
+    
+    public void changeX(int x)
+    {
+    	if ((((x>0)&&(loc[0]+x<width-cursorWidth))||((x<0)&&((loc[0]-x)>0)))&&(conn==0))
+    	{
+    		loc[0]+=x;
+    	}
+    }
+    
+    public void changeY(int y)
+    {
+    	if ((((y>0)&&(loc[1]+y<height-cursorHeight))||((y<0)&&((loc[1]-y)>0)))&&(conn==0))
+    	{
+    		loc[1]+=y;
+    	}
+    }
+    
+    public void setCurser()
+    {
+    	cursor.setX(loc[0]);
+    	cursor.setY(loc[1]);
+    }
+    
+}
